@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewsLens AI - Fact Check Notes</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header class="header">
+        <div class="container header-content">
+            <h1 class="logo">NewsLens <span>AI</span></h1>
+            <nav class="nav">
+                <a href="index.html" class="active">Analyze News</a>
+                <a href="history.html">History</a>
+                <a href="about.html">About</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="input-section card">
+            <h2>Analyze an Article</h2>
+            <p>Enter a news article URL or paste the text directly.</p>
+            
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('url')">URL</button>
+                <button class="tab-btn" onclick="switchTab('text')">Paste Text</button>
+            </div>
+            
+            <div id="url-input" class="tab-content active">
+                <input type="url" id="article-url" placeholder="https://example.com/news-article..." class="form-control">
+            </div>
+            
+            <div id="text-input" class="tab-content hidden">
+                <textarea id="article-text" placeholder="Paste the news article text here..." rows="6" class="form-control"></textarea>
+            </div>
+            
+            <div class="actions">
+                <button id="analyze-btn" class="btn btn-primary" onclick="analyzeArticle()">Analyze News</button>
+                <button class="btn btn-secondary" onclick="clearInput()">Clear</button>
+                <button class="btn btn-secondary" onclick="runDemoMode()" style="background-color: #f59e0b; color: white;">Try Demo Mode</button>
+            </div>
+            
+            <div id="error-message" class="error hidden"></div>
+            
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Analyzing article, extracting claims, and verifying sources...</p>
+                <p class="small-text">This may take up to a minute depending on the article length.</p>
+            </div>
+        </section>
+
+        <section id="results-section" class="results-section hidden">
+            <!-- Overall Stats -->
+            <div class="dashboard-stats card">
+                <h3>Claim Evidence Overview</h3>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <span class="stat-number" id="total-claims">0</span>
+                        <span class="stat-label">Total Claims</span>
+                    </div>
+                    <div class="stat-box supported">
+                        <span class="stat-number" id="supported-claims">0</span>
+                        <span class="stat-label">Supported</span>
+                    </div>
+                    <div class="stat-box partial">
+                        <span class="stat-number" id="partial-claims">0</span>
+                        <span class="stat-label">Partially Supported</span>
+                    </div>
+                    <div class="stat-box contradicted">
+                        <span class="stat-number" id="contradicted-claims">0</span>
+                        <span class="stat-label">Contradicted</span>
+                    </div>
+                    <div class="stat-box insufficient">
+                        <span class="stat-number" id="insufficient-claims">0</span>
+                        <span class="stat-label">Insufficient</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-layout">
+                <!-- Left Column: Article & Summary -->
+                <div class="left-col">
+                    <div class="article-info card">
+                        <h2 id="res-title">Article Title</h2>
+                        <p class="source-info">Source: <a href="#" id="res-source" target="_blank">Unknown</a></p>
+                    </div>
+
+                    <div class="summary-box card">
+                        <h3>AI Summary</h3>
+                        <p id="res-summary"></p>
+                        
+                        <h4>Key Points</h4>
+                        <ul id="res-key-points"></ul>
+                    </div>
+                </div>
+
+                <!-- Right Column: Claims -->
+                <div class="right-col">
+                    <h3>Fact-Checked Claims</h3>
+                    <div id="claims-container">
+                        <!-- Claim cards will be injected here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

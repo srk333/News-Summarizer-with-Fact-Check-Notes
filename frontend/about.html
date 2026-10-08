@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - NewsLens AI</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container header-content">
+            <h1 class="logo">NewsLens <span>AI</span></h1>
+            <nav class="nav">
+                <a href="index.html">Analyze News</a>
+                <a href="history.html">History</a>
+                <a href="about.html" class="active">About</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card about-section">
+            <h2>About NewsLens AI</h2>
+            
+            <div class="about-content">
+                <h3>What is this project?</h3>
+                <p>NewsLens AI is a Generative AI course project for a B.Tech Computer Science and Engineering program. It is a complete pipeline that summarizes news articles and automatically verifies important factual claims against external sources.</p>
+                
+                <h3>How does Generative AI help?</h3>
+                <p>Generative AI (Large Language Models) is used to comprehend the text, write concise summaries, extract the key claims that need checking, and analyze the retrieved evidence to reach a verdict.</p>
+                
+                <h3>What is RAG?</h3>
+                <p>RAG stands for <strong>Retrieval-Augmented Generation</strong>. Instead of relying purely on the AI's internal training data (which can hallucinate or be out of date), RAG searches for live external evidence (Retrieval) and provides it to the AI to form an accurate, evidence-based response (Generation).</p>
+                
+                <h3>How does fact-checking work?</h3>
+                <ol>
+                    <li>The system extracts key factual claims from the article.</li>
+                    <li>It uses search APIs (Tavily) to find relevant real-world documents.</li>
+                    <li>The documents are broken down into vectors and we search for the most relevant context.</li>
+                    <li>The context is supplied to the AI, which decides if the claim is Supported, Contradicted, or Lacks Evidence based <em>only</em> on the retrieved context.</li>
+                </ol>
+                
+                <h3>Limitations</h3>
+                <div class="alert warning">
+                    <ul>
+                        <li>AI can still make mistakes in reasoning.</li>
+                        <li>Search results might not always return the best or most complete information.</li>
+                        <li>Lack of evidence does not mathematically prove a claim is false.</li>
+                        <li>The tool is an <strong>assistant</strong> for readers, not a replacement for professional human journalism and fact-checking.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
