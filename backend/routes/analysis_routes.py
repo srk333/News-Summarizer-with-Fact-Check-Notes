@@ -11,107 +11,123 @@ from backend.models.evidence import Evidence
 from backend.database.db import db
 from backend.utils.validators import is_valid_url
 import json
+import traceback
 
 analysis_bp = Blueprint('analysis', __name__)
 
 @analysis_bp.route('/api/analyze', methods=['POST'])
 def analyze():
     data = request.json
-    url = data.get('url')
-    text = data.get('text')
-    
+    if not data:
+        return jsonify({"error": "No data provided."}), 400
+
+    url = data.get('url', '').strip()
+    text = data.get('text', '').strip()
+
     if not url and not text:
         return jsonify({"error": "Either URL or text must be provided."}), 400
-        
+
     if url and not is_valid_url(url):
-        return jsonify({"error": "Invalid URL provided."}), 400
+        return jsonify({"error": "Invalid URL provided. Please enter a full URL starting with http:// or https://"}), 400
 
     try:
-        # 1. Extraction
+        # STEP 1: Extract article
         if url:
-            article_data = ArticleExtractor.extract_from_url(url)
+            try:
+                article_data = ArticleExtractor.extract_from_url(url)
+            except Exception as e:
+                return jsonify({"error": f"Could not extract article from URL: {str(e)}"}), 400
         else:
-            article_data = ArticleExtractor.extract_from_text(text)
-            
-        # 2. Summarization
-        summarizer = Summarizer()
-        summary_result = summarizer.summarize(article_data['text'])
-        
-        # Save basic article
+            try:
+                article_data = ArticleExtractor.extract_from_text(text)
+            except Exception as e:
+                return jsonify({"error": f"Invalid text input: {str(e)}"}), 400
+
+        if not article_data.get('text') or len(article_data['text'].strip()) < 50:
+            return jsonify({"error": "Article content is too short or could not be extracted. Try pasting the text directly."}), 400
+
+        # STEP 2: Summarization
+        try:
+            summarizer = Summarizer()
+            summary_result = summarizer.summarize(article_data['text'])
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+        # STEP 3: Save article to DB
         article = Article(
             url=url if url else None,
-            title=article_data['title'],
-            source=article_data['source'],
-            article_text=article_data['text'],
+            title=article_data.get('title', 'Untitled Article'),
+            source=article_data.get('source', 'Unknown'),
+            article_text=article_data['text'][:10000],
             summary=json.dumps(summary_result.get('summary', '')),
             key_points=json.dumps(summary_result.get('key_points', []))
         )
         db.session.add(article)
-        db.session.flush() # get ID
-        
-        # 3. Claim Extraction
-        claim_extractor = ClaimExtractor()
-        claims_data = claim_extractor.extract_claims(article_data['text'])
-        
-        # Initialize services
+        db.session.flush()
+
+        # STEP 4: Claim extraction
+        try:
+            claim_extractor = ClaimExtractor()
+            claims_data = claim_extractor.extract_claims(article_data['text'])
+        except Exception as e:
+            claims_data = []
+
+        # STEP 5: Initialize services
         search_service = SearchService()
         rag_service = RAGService()
         fact_checker = FactChecker()
-        
-        # 4. Process Claims
+
+        # STEP 6: Process each claim
         for claim_dict in claims_data:
-            claim_text = claim_dict.get('claim_text')
-            
-            # Save claim
+            claim_text = claim_dict.get('claim_text', '')
+            if not claim_text:
+                continue
+
             claim = Claim(
                 article_id=article.id,
                 claim_text=claim_text,
-                claim_type=claim_dict.get('claim_type'),
-                importance=claim_dict.get('importance')
+                claim_type=claim_dict.get('claim_type', 'General'),
+                importance=claim_dict.get('importance', 'MEDIUM')
             )
             db.session.add(claim)
-            db.session.flush() # get ID
-            
-            # 5. Search for Evidence
+            db.session.flush()
+
+            # Search for evidence
             try:
                 raw_evidence = search_service.search_evidence(claim_text)
             except Exception as e:
-                # API not configured or failed
                 raw_evidence = []
-                
-            # 6. RAG: Process Evidence
+
+            # RAG processing
             if raw_evidence:
-                refined_evidence = rag_service.process_evidence_for_claim(claim_text, raw_evidence)
+                try:
+                    refined_evidence = rag_service.process_evidence_for_claim(claim_text, raw_evidence)
+                except Exception as e:
+                    refined_evidence = raw_evidence
             else:
                 refined_evidence = []
-                
-            # Save Evidence to DB
-            saved_evidence_list = []
-            # We want unique sources to show to the user, not just chunks. 
-            # We will save the original raw evidence as sources, and use refined for fact checking.
+
+            # Save evidence to DB
             for ev in raw_evidence:
                 db_ev = Evidence(
                     claim_id=claim.id,
-                    source_title=ev['title'],
-                    source_url=ev['url'],
-                    source_domain=ev['domain'],
-                    evidence_text=ev['text'][:2000], # store a snippet
-                    source_quality=ev['quality']
+                    source_title=ev.get('title', 'Unknown'),
+                    source_url=ev.get('url', ''),
+                    source_domain=ev.get('domain', 'Unknown'),
+                    evidence_text=ev.get('text', '')[:2000],
+                    source_quality=ev.get('quality', 'LOWER TRUST')
                 )
                 db.session.add(db_ev)
-                saved_evidence_list.append(ev)
-                
-            # 7. Fact Check Analysis
+
+            # Fact check
             fact_check_result = fact_checker.check_claim(claim_text, refined_evidence)
-            
             claim.verdict = fact_check_result.get('verdict', 'UNABLE TO VERIFY')
-            claim.fact_check_note = fact_check_result.get('fact_check_note', 'No notes.')
-            
+            claim.fact_check_note = fact_check_result.get('fact_check_note', 'No notes available.')
+
         db.session.commit()
-        
-        # Return full article with claims and evidence
         return jsonify(article.to_dict()), 200
-        
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        print(traceback.format_exc())
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500

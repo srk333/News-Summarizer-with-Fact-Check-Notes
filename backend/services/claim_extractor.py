@@ -1,55 +1,68 @@
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
 from backend.config import Config
+import json
+import re
 
 class ClaimExtractor:
     def __init__(self):
         self.llm = ChatOpenAI(
-            api_key=Config.OPENAI_API_KEY, 
-            model=Config.OPENAI_MODEL_NAME, 
+            api_key=Config.OPENAI_API_KEY,
+            model=Config.OPENAI_MODEL_NAME,
             temperature=0
         )
-        
+
     def extract_claims(self, article_text):
-        parser = JsonOutputParser()
-        
+        article_text = article_text[:6000]
+
+        prompt_text = """
+You are an expert fact-checker. Read the following article and extract important factual claims.
+
+ARTICLE:
+{article_text}
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
+{{
+    "claims": [
+        {{
+            "claim_text": "The exact factual claim",
+            "claim_type": "Type (e.g. Economic statistic, Event, Quote, Scientific fact)",
+            "importance": "HIGH or MEDIUM",
+            "entities_involved": ["Entity1", "Entity2"],
+            "date_time": "Date if mentioned or null"
+        }}
+    ]
+}}
+
+RULES:
+- Extract only FACTUAL claims that can be verified as true or false.
+- DO NOT include opinions or subjective statements.
+- Maximum 5 most important claims.
+- Return ONLY the JSON object, nothing else.
+"""
         prompt = PromptTemplate(
-            template="""
-            You are an expert fact-checker. Read the following article and extract important factual claims.
-            
-            ARTICLE:
-            {article_text}
-            
-            Provide the output in the following JSON format:
-            {{
-                "claims": [
-                    {{
-                        "claim_text": "Exact text of the claim or simplified version",
-                        "claim_type": "Type of claim (e.g., Economic statistic, Quote, Event)",
-                        "importance": "HIGH or MEDIUM",
-                        "entities_involved": ["Entity1", "Entity2"],
-                        "date_time": "Date/time if mentioned, else null"
-                    }}
-                ]
-            }}
-            
-            RULES:
-            - Extract only FACTUAL claims (things that can be verified as true or false).
-            - DO NOT treat opinions as factual claims. (e.g., "This is the best economic policy" is an opinion).
-            - Focus only on HIGH or MEDIUM importance claims. Ignore trivial details.
-            - Extract a maximum of 5 most important claims.
-            
-            {format_instructions}
-            """,
-            input_variables=["article_text"],
-            partial_variables={"format_instructions": parser.get_format_instructions()},
+            template=prompt_text,
+            input_variables=["article_text"]
         )
-        
-        chain = prompt | self.llm | parser
-        
+
+        chain = prompt | self.llm
+
         try:
             result = chain.invoke({"article_text": article_text})
-            return result.get("claims", [])
+            content = result.content if hasattr(result, 'content') else str(result)
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            content = content.strip()
+            parsed = json.loads(content)
+            return parsed.get("claims", [])
+        except json.JSONDecodeError:
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                return parsed.get("claims", [])
+            return []
         except Exception as e:
             raise Exception(f"Claim extraction failed: {str(e)}")

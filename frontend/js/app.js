@@ -1,41 +1,57 @@
 const API_BASE = 'http://localhost:5000/api';
 
+// Tab switching
 function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-    
     if (tab === 'url') {
-        document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
         document.getElementById('url-input').classList.remove('hidden');
     } else {
-        document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
         document.getElementById('text-input').classList.remove('hidden');
     }
 }
 
 function clearInput() {
-    document.getElementById('article-url').value = '';
-    document.getElementById('article-text').value = '';
-    document.getElementById('results-section').classList.add('hidden');
-    document.getElementById('error-message').classList.add('hidden');
+    const urlEl = document.getElementById('article-url');
+    const textEl = document.getElementById('article-text');
+    if (urlEl) urlEl.value = '';
+    if (textEl) textEl.value = '';
+    const resultsEl = document.getElementById('results-section');
+    if (resultsEl) resultsEl.classList.add('hidden');
+    hideError();
+}
+
+function showError(msg) {
+    const errEl = document.getElementById('error-message');
+    if (errEl) {
+        errEl.innerText = '⚠️ ' + msg;
+        errEl.classList.remove('hidden');
+    }
+}
+
+function hideError() {
+    const errEl = document.getElementById('error-message');
+    if (errEl) errEl.classList.add('hidden');
 }
 
 async function analyzeArticle() {
-    const isUrl = document.querySelector('.tab-btn.active').innerText === 'URL';
-    const url = document.getElementById('article-url').value;
-    const text = document.getElementById('article-text').value;
-    
-    const payload = {};
-    if (isUrl) {
-        if (!url) return showError("Please enter a URL");
-        payload.url = url;
-    } else {
-        if (!text) return showError("Please paste article text");
-        payload.text = text;
-    }
+    const activeTab = document.querySelector('.tab-btn.active');
+    const isUrl = activeTab && activeTab.innerText.trim() === 'URL';
+    const urlEl = document.getElementById('article-url');
+    const textEl = document.getElementById('article-text');
+    const url = urlEl ? urlEl.value.trim() : '';
+    const text = textEl ? textEl.value.trim() : '';
 
-    // UI State
-    document.getElementById('error-message').classList.add('hidden');
+    hideError();
+
+    if (isUrl && !url) return showError("Please enter a news article URL.");
+    if (!isUrl && !text) return showError("Please paste the news article text.");
+
+    const payload = isUrl ? { url } : { text };
+
+    // UI: show loading
     document.getElementById('results-section').classList.add('hidden');
     document.getElementById('loading').classList.remove('hidden');
     document.getElementById('analyze-btn').disabled = true;
@@ -50,7 +66,7 @@ async function analyzeArticle() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error || "Analysis failed");
+            throw new Error(data.error || 'Analysis failed. Please try again.');
         }
 
         displayResults(data);
@@ -62,192 +78,228 @@ async function analyzeArticle() {
     }
 }
 
-function showError(msg) {
-    const errEl = document.getElementById('error-message');
-    if(errEl) {
-        errEl.innerText = msg;
-        errEl.classList.remove('hidden');
-    }
-}
-
 function displayResults(data) {
     document.getElementById('results-section').classList.remove('hidden');
-    
-    // Article Info
-    document.getElementById('res-title').innerText = data.title || "Untitled Article";
+
+    // Article info
+    document.getElementById('res-title').innerText = data.title || 'Untitled Article';
     const sourceEl = document.getElementById('res-source');
-    sourceEl.innerText = data.source;
-    sourceEl.href = data.url || "#";
-    
-    // Summary
-    document.getElementById('res-summary').innerText = data.summary;
-    const kpEl = document.getElementById('res-key-points');
-    kpEl.innerHTML = '';
-    if (data.key_points && Array.isArray(data.key_points)) {
-        data.key_points.forEach(kp => {
-            const li = document.createElement('li');
-            li.innerText = kp;
-            kpEl.appendChild(li);
-        });
+    if (sourceEl) {
+        sourceEl.innerText = data.source || 'Unknown';
+        sourceEl.href = data.url || '#';
     }
 
-    // Claims and Stats
+    // Summary — handle both string and object
+    const summaryEl = document.getElementById('res-summary');
+    if (summaryEl) {
+        if (typeof data.summary === 'string') {
+            summaryEl.innerText = data.summary;
+        } else if (data.summary && typeof data.summary === 'object') {
+            summaryEl.innerText = data.summary.summary || JSON.stringify(data.summary);
+        } else {
+            summaryEl.innerText = 'Summary not available.';
+        }
+    }
+
+    // Key points
+    const kpEl = document.getElementById('res-key-points');
+    if (kpEl) {
+        kpEl.innerHTML = '';
+        const keyPoints = Array.isArray(data.key_points) ? data.key_points : [];
+        if (keyPoints.length === 0) {
+            kpEl.innerHTML = '<li>No key points extracted.</li>';
+        } else {
+            keyPoints.forEach(kp => {
+                const li = document.createElement('li');
+                li.innerText = kp;
+                kpEl.appendChild(li);
+            });
+        }
+    }
+
+    // Claims and stats
+    const claims = Array.isArray(data.claims) ? data.claims : [];
     let supported = 0, partial = 0, contradicted = 0, insufficient = 0;
-    
+
     const claimsContainer = document.getElementById('claims-container');
-    claimsContainer.innerHTML = '';
-    
-    if (data.claims && data.claims.length > 0) {
-        data.claims.forEach((claim, idx) => {
-            // Stats
-            const v = claim.verdict || "";
-            if (v.includes('SUPPORTED') && !v.includes('PARTIALLY')) supported++;
-            else if (v.includes('PARTIALLY')) partial++;
-            else if (v.includes('CONTRADICTED')) contradicted++;
-            else insufficient++;
+    if (claimsContainer) {
+        claimsContainer.innerHTML = '';
 
-            // Card
-            let vClass = 'verdict-UNABLE';
-            let vIcon = '⚫';
-            if (v.includes('SUPPORTED') && !v.includes('PARTIALLY')) { vClass = 'verdict-SUPPORTED'; vIcon='🟢'; }
-            else if (v.includes('PARTIALLY')) { vClass = 'verdict-PARTIALLY'; vIcon='🟡'; }
-            else if (v.includes('CONTRADICTED')) { vClass = 'verdict-CONTRADICTED'; vIcon='🔴'; }
-            else if (v.includes('INSUFFICIENT')) { vClass = 'verdict-INSUFFICIENT'; vIcon='⚪'; }
+        if (claims.length === 0) {
+            claimsContainer.innerHTML = '<p style="color:#64748b;">No factual claims were extracted from this article.</p>';
+        } else {
+            claims.forEach((claim, idx) => {
+                const v = (claim.verdict || '').toUpperCase();
 
-            let evidenceHtml = '';
-            if (claim.evidence && claim.evidence.length > 0) {
-                evidenceHtml = `
-                    <div class="evidence-list">
-                        <h5>Evidence Sources:</h5>
-                        ${claim.evidence.map(e => `
-                            <div class="evidence-item">
-                                <a href="${e.source_url}" target="_blank">${e.source_domain}</a> 
-                                <span class="trust-badge">${e.source_quality}</span>
-                                <div>${e.source_title}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            } else {
-                evidenceHtml = `<p class="small-text">No sources could be retrieved.</p>`;
-            }
+                // Count for stats
+                if (v === 'SUPPORTED') supported++;
+                else if (v === 'PARTIALLY SUPPORTED') partial++;
+                else if (v === 'CONTRADICTED') contradicted++;
+                else insufficient++;
 
-            const html = `
+                // Verdict styling
+                let vClass = 'verdict-UNABLE';
+                let vIcon = '⚫';
+                if (v === 'SUPPORTED') { vClass = 'verdict-SUPPORTED'; vIcon = '🟢'; }
+                else if (v === 'PARTIALLY SUPPORTED') { vClass = 'verdict-PARTIALLY'; vIcon = '🟡'; }
+                else if (v === 'CONTRADICTED') { vClass = 'verdict-CONTRADICTED'; vIcon = '🔴'; }
+                else if (v === 'INSUFFICIENT EVIDENCE') { vClass = 'verdict-INSUFFICIENT'; vIcon = '⚪'; }
+
+                // Evidence
+                const evidence = Array.isArray(claim.evidence) ? claim.evidence : [];
+                let evidenceHtml = '';
+                if (evidence.length > 0) {
+                    evidenceHtml = `<div class="evidence-list"><strong>Evidence Sources:</strong>`;
+                    evidence.forEach(e => {
+                        evidenceHtml += `
+                        <div class="evidence-item">
+                            <a href="${e.source_url || '#'}" target="_blank">${e.source_domain || 'Unknown'}</a>
+                            <span class="trust-badge">${e.source_quality || ''}</span>
+                            <div style="color:#64748b; font-size:0.85rem;">${e.source_title || ''}</div>
+                        </div>`;
+                    });
+                    evidenceHtml += `</div>`;
+                } else {
+                    evidenceHtml = `<p style="color:#94a3b8; font-size:0.9rem;">⚠️ No external sources could be retrieved for this claim.</p>`;
+                }
+
+                claimsContainer.innerHTML += `
                 <div class="claim-card">
-                    <div class="claim-header">Claim #${idx + 1}: "${claim.claim_text}"</div>
-                    <div class="verdict-badge ${vClass}">${vIcon} ${claim.verdict}</div>
+                    <div class="claim-header">Claim #${idx + 1}</div>
+                    <p style="margin-bottom:1rem;">"${claim.claim_text}"</p>
+                    <span class="verdict-badge ${vClass}">${vIcon} ${claim.verdict || 'UNABLE TO VERIFY'}</span>
                     <div class="note-box">
-                        <strong>Fact-check Note:</strong> ${claim.fact_check_note}
+                        <strong>Fact-check Note:</strong><br>${claim.fact_check_note || 'No notes available.'}
                     </div>
                     ${evidenceHtml}
-                </div>
-            `;
-            claimsContainer.innerHTML += html;
-        });
-    } else {
-        claimsContainer.innerHTML = '<p>No factual claims extracted.</p>';
+                </div>`;
+            });
+        }
     }
 
-    // Update Stats
-    document.getElementById('total-claims').innerText = (data.claims || []).length;
+    // Update stats
+    document.getElementById('total-claims').innerText = claims.length;
     document.getElementById('supported-claims').innerText = supported;
     document.getElementById('partial-claims').innerText = partial;
     document.getElementById('contradicted-claims').innerText = contradicted;
     document.getElementById('insufficient-claims').innerText = insufficient;
+
+    // Scroll to results
+    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
 }
 
-// History logic
-async function loadHistory() {
-    const tableBody = document.getElementById('history-body');
-    if (!tableBody) return; // not on history page
-    
-    document.getElementById('loading').classList.remove('hidden');
-    
-    try {
-        const response = await fetch(`${API_BASE}/history`);
-        const data = await response.json();
-        
-        document.getElementById('loading').classList.add('hidden');
-        
-        if (data.length === 0) {
-            document.getElementById('no-history').classList.remove('hidden');
-            document.querySelector('.table-container').classList.add('hidden');
-            return;
-        }
-        
-        tableBody.innerHTML = '';
-        data.forEach(item => {
-            const date = new Date(item.created_at).toLocaleDateString();
-            tableBody.innerHTML += `
-                <tr>
-                    <td>${date}</td>
-                    <td>${item.title || "Untitled"}</td>
-                    <td>${item.source.substring(0, 30)}...</td>
-                    <td>${item.claims_count}</td>
-                    <td>
-                        <button class="btn btn-secondary" onclick="viewHistory(${item.id})" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</button>
-                    </td>
-                </tr>
-            `;
-        });
-    } catch (err) {
-        document.getElementById('loading').classList.add('hidden');
-        showError("Failed to load history");
-    }
-}
-
-function viewHistory(id) {
-    alert("Viewing past analysis directly from history page is not fully implemented in the UI yet. Check the API directly via GET /api/history/" + id);
-}
-
+// ---- DEMO MODE ----
 function runDemoMode() {
-    // Demo data for academic presentation
+    hideError();
     const demoData = {
-        title: "[Demo Data] Economic Growth Reaches New Heights in 2026",
-        source: "Demo News Outlet",
+        title: "[DEMO] AI Startup Raises $500M in Landmark Funding Round",
+        source: "Demo Mode — Not a real article",
         url: "#",
-        summary: "The economy has experienced significant growth over the past year. Tech sector innovations and new policy changes are credited for this rapid expansion.",
+        summary: "A major AI startup has secured $500 million in a Series D funding round, one of the largest in the industry this year. The funds will be used to expand their research team and launch new AI models. Several major tech firms participated in the round.",
         key_points: [
-            "Economy grew by 7.8% in Q1.",
-            "Tech sector stocks surged.",
-            "New trade policy implemented."
+            "AI startup raised $500M in Series D funding.",
+            "Funding will be used to expand research and product development.",
+            "Several major tech firms participated as investors.",
+            "The startup plans to launch 3 new AI models next year.",
+            "Total valuation now stands at $5 billion."
         ],
         claims: [
             {
-                claim_text: "The economy grew by 7.8% in Q1 of 2026.",
+                claim_text: "The AI startup raised $500 million in a Series D round.",
                 verdict: "SUPPORTED",
-                fact_check_note: "Official government statistical data confirms the 7.8% GDP growth in the specified quarter.",
+                fact_check_note: "Multiple financial news outlets and official press releases confirm the $500M Series D funding round closed this quarter.",
                 evidence: [
-                    {
-                        source_domain: "gov.statistics",
-                        source_url: "#",
-                        source_title: "Q1 2026 GDP Growth Report",
-                        source_quality: "HIGH TRUST"
-                    }
+                    { source_domain: "reuters.com", source_url: "#", source_title: "AI Startup Closes $500M Series D Round", source_quality: "MEDIUM TRUST" },
+                    { source_domain: "techcrunch.com", source_url: "#", source_title: "Landmark AI Funding Round Closes", source_quality: "MEDIUM TRUST" }
                 ]
             },
             {
-                claim_text: "The new AI act bans all open-source models.",
-                verdict: "CONTRADICTED",
-                fact_check_note: "The AI act specifically protects and exempts open-source models under certain conditions, rather than banning them.",
+                claim_text: "The company's total valuation is now $10 billion.",
+                verdict: "PARTIALLY SUPPORTED",
+                fact_check_note: "Some sources cite a $5 billion valuation while others estimate up to $8 billion. The $10 billion figure could not be confirmed.",
                 evidence: [
-                    {
-                        source_domain: "legaltech.org",
-                        source_url: "#",
-                        source_title: "Understanding the New AI Act",
-                        source_quality: "MEDIUM TRUST"
-                    }
+                    { source_domain: "bloomberg.com", source_url: "#", source_title: "AI Valuation Analysis Q4", source_quality: "MEDIUM TRUST" }
                 ]
             },
             {
-                claim_text: "Company Z fired 50,000 employees last week.",
+                claim_text: "The startup has offices in 50 countries.",
                 verdict: "INSUFFICIENT EVIDENCE",
-                fact_check_note: "No credible news outlets or company filings report a 50,000 employee layoff at Company Z.",
+                fact_check_note: "No reliable external sources could confirm the number of countries the startup operates in.",
                 evidence: []
             }
         ]
     };
-    
-    document.getElementById('error-message').classList.add('hidden');
     displayResults(demoData);
 }
+
+// ---- HISTORY PAGE ----
+async function loadHistory() {
+    const tableBody = document.getElementById('history-body');
+    if (!tableBody) return;
+
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.classList.remove('hidden');
+
+    try {
+        const response = await fetch(`${API_BASE}/history`);
+        const data = await response.json();
+
+        if (loadingEl) loadingEl.classList.add('hidden');
+
+        if (!data || data.length === 0) {
+            const noHistEl = document.getElementById('no-history');
+            if (noHistEl) noHistEl.classList.remove('hidden');
+            const tableContainer = document.querySelector('.table-container');
+            if (tableContainer) tableContainer.classList.add('hidden');
+            return;
+        }
+
+        tableBody.innerHTML = '';
+        data.forEach(item => {
+            const date = new Date(item.created_at).toLocaleDateString();
+            const source = (item.source || 'Unknown').substring(0, 40);
+            tableBody.innerHTML += `
+            <tr>
+                <td>${date}</td>
+                <td>${item.title || 'Untitled'}</td>
+                <td>${source}</td>
+                <td>${item.claims_count || 0}</td>
+                <td>
+                    <button class="btn btn-secondary" onclick="viewHistory(${item.id})"
+                        style="padding:0.25rem 0.75rem; font-size:0.85rem;">
+                        View
+                    </button>
+                </td>
+            </tr>`;
+        });
+    } catch (err) {
+        if (loadingEl) loadingEl.classList.add('hidden');
+        showError('Failed to load history. Is the backend server running?');
+    }
+}
+
+async function viewHistory(id) {
+    try {
+        const response = await fetch(`${API_BASE}/history/${id}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load');
+
+        // Store data and redirect to index page
+        sessionStorage.setItem('viewResult', JSON.stringify(data));
+        window.location.href = 'index.html?view=' + id;
+    } catch (err) {
+        alert('Could not load that analysis: ' + err.message);
+    }
+}
+
+// On page load — check if we came from history
+window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view')) {
+        const stored = sessionStorage.getItem('viewResult');
+        if (stored) {
+            displayResults(JSON.parse(stored));
+            sessionStorage.removeItem('viewResult');
+        }
+    }
+});
