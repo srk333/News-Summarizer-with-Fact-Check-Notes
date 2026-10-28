@@ -1,12 +1,19 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from backend.config import Config
 from langchain.docstore.document import Document
+from backend.config import Config
+
 
 class RAGService:
     def __init__(self):
-        self.embeddings = OpenAIEmbeddings(api_key=Config.OPENAI_API_KEY)
+        embed_kwargs = dict(
+            api_key=Config.OPENAI_API_KEY,
+            model=Config.EMBEDDING_MODEL_NAME,
+        )
+        if Config.OPENAI_BASE_URL:
+            embed_kwargs["base_url"] = Config.OPENAI_BASE_URL
+        self.embeddings = OpenAIEmbeddings(**embed_kwargs)
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50
@@ -34,14 +41,10 @@ class RAGService:
                 ))
 
         if not documents:
-            # Fallback: return evidence as-is without RAG
-            return evidence_list
+            return self._raw_fallback(evidence_list)
 
         try:
-            vectorstore = FAISS.from_documents(
-                documents=documents,
-                embedding=self.embeddings
-            )
+            vectorstore = FAISS.from_documents(documents=documents, embedding=self.embeddings)
             retriever = vectorstore.as_retriever(search_kwargs={"k": min(4, len(documents))})
             relevant_docs = retriever.invoke(claim_text)
 
@@ -56,12 +59,14 @@ class RAGService:
                 })
             return refined_evidence
         except Exception as e:
-            # If RAG fails (e.g. embedding API error), return raw evidence directly
             print(f"RAG processing failed, using raw evidence: {str(e)}")
-            return [{
-                'domain': ev.get('domain', 'Unknown'),
-                'url': ev.get('url', ''),
-                'title': ev.get('title', ''),
-                'quality': ev.get('quality', 'LOWER TRUST'),
-                'text': ev.get('text', '')[:500]
-            } for ev in evidence_list[:4]]
+            return self._raw_fallback(evidence_list)
+
+    def _raw_fallback(self, evidence_list):
+        return [{
+            'domain': ev.get('domain', 'Unknown'),
+            'url': ev.get('url', ''),
+            'title': ev.get('title', ''),
+            'quality': ev.get('quality', 'LOWER TRUST'),
+            'text': ev.get('text', '')[:500]
+        } for ev in evidence_list[:4]]
