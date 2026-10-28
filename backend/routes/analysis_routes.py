@@ -43,8 +43,8 @@ def analyze():
             except Exception as e:
                 return jsonify({"error": f"Invalid text input: {str(e)}"}), 400
 
-        if not article_data.get('text') or len(article_data['text'].strip()) < 50:
-            return jsonify({"error": "Article content is too short or could not be extracted. Try pasting the text directly."}), 400
+        if not article_data.get('text') or len(article_data['text'].strip()) < 30:
+            return jsonify({"error": "Article content is too short or could not be extracted. Some sites (MSN, Bing News) block scrapers — please copy and paste the article text directly into the 'Paste Text' tab instead."}), 400
 
         # STEP 2: Summarization
         try:
