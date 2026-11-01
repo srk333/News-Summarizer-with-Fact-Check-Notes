@@ -1,89 +1,117 @@
-# News Summarizer with Fact Check Notes
+# NewsLens AI: News Summarizer with Fact Check Notes
 
 ## Problem Statement
+
 In today's digital age, the volume of news articles and online information is overwhelming, making it difficult to keep up with daily events. More importantly, the rise of misinformation and unverified claims requires readers to constantly fact-check what they read. Manually verifying every claim is time-consuming and often neglected, leading to the spread of fake news.
 
 ## Proposed Solution
-NewsLens AI is an AI-powered application that automatically extracts news content, generates a concise summary, identifies key factual claims, and uses an automated Retrieval-Augmented Generation (RAG) pipeline to verify those claims against reliable external sources on the web. It provides a fact-check verdict and a brief note for each claim, helping users evaluate the credibility of the news they read.
+
+NewsLens AI is an AI-powered web application that extracts news content, generates a concise summary, identifies key factual claims, and uses an automated Retrieval-Augmented Generation (RAG) pipeline to verify those claims against live web sources. It gives a fact-check verdict and a short note for each claim, with the sources behind it, so users can judge the credibility of what they read.
 
 ## Features
-- **News Extraction**: Automatically extracts text from news article URLs or pasted text.
-- **AI Summarization**: Generates short summaries and key points using OpenAI.
-- **Claim Extraction**: Identifies factual claims that require verification, ignoring opinions.
-- **Automated Evidence Search**: Uses Tavily API to search the web for external evidence.
-- **RAG Pipeline**: Retrieves and processes web evidence into vectors (Chroma) and provides context to the LLM.
-- **Fact-Check Engine**: Evaluates claims against evidence and outputs one of five verdicts (Supported, Partially Supported, Contradicted, Insufficient Evidence, Unable to Verify).
-- **Quality Assessment**: Highlights source domains and trust levels.
-- **History Tracking**: Stores past analyses in a PostgreSQL database for future review.
+
+- **News Extraction**: Extracts article text from a URL (multiple fallback strategies) or from pasted text.
+- **AI Summarization**: Generates a short summary and key points using the Gemini API.
+- **Claim Extraction**: Identifies verifiable factual claims and ignores opinions.
+- **Automated Evidence Search**: Uses the Tavily API to search the web for evidence for each claim.
+- **RAG Pipeline**: Chunks the evidence, embeds it, stores it in a FAISS vector index, and retrieves the most relevant chunks for each claim.
+- **Fact-Check Engine**: Judges each claim only against the retrieved evidence and returns one of five verdicts: Supported, Partially Supported, Contradicted, Insufficient Evidence, Unable to Verify.
+- **Source Quality**: Shows source domains and a trust level for each.
+- **Reliability**: Automatic retries and a fallback model when the AI service is busy.
+- **History Tracking**: Stores past analyses in a database for later review.
 
 ## Architecture
-1. **Frontend**: HTML5, CSS3, JavaScript (Vanilla, no frameworks)
+
+1. **Frontend**: HTML5, CSS3, vanilla JavaScript (no frameworks)
 2. **Backend**: Python, Flask REST API
-3. **Database**: PostgreSQL (via SQLAlchemy ORM)
-4. **Generative AI**: OpenAI (gpt-4o-mini) for summarization and logic
-5. **RAG & Search**: Tavily API for search, LangChain for chunking, OpenAI Embeddings, Chroma for vector storage.
+3. **Database**: SQLite by default (via SQLAlchemy ORM); PostgreSQL is supported by changing `DATABASE_URL`
+4. **Generative AI**: Google Gemini API, called through its OpenAI-compatible endpoint, used for summarization, claim extraction and fact-check verdicts
+5. **RAG & Search**: Tavily API for web search, LangChain for orchestration and chunking, Gemini embeddings (`gemini-embedding-001`), FAISS for vector storage and similarity search
+
+### Pipeline
+
+```
+URL / Text -> Article Extractor
+           -> Summarizer (LLM)
+           -> Claim Extractor (LLM)
+           -> for each claim:
+                Tavily web search
+                -> chunk + embed (gemini-embedding-001)
+                -> FAISS similarity search (top chunks)
+                -> Fact Checker (LLM, evidence only)
+           -> Save to database -> Frontend
+```
 
 ## Technologies
-- **Frontend**: HTML5, CSS3, JavaScript, Chart.js (optional)
-- **Backend**: Flask, SQLAlchemy
-- **AI/NLP**: LangChain, OpenAI
-- **Vector DB**: FAISS
+
+- **Frontend**: HTML5, CSS3, JavaScript
+- **Backend**: Python 3, Flask, Flask-CORS, SQLAlchemy
+- **AI / NLP**: Gemini API (OpenAI-compatible endpoint), LangChain
+- **Vector DB**: FAISS (faiss-cpu)
 - **Search**: Tavily
+- **Article extraction**: newspaper3k, BeautifulSoup4, requests
+- **Config**: python-dotenv
 
 ---
 
 ## Installation
 
-### 1. Clone & Setup Environment
+### 1. Clone and set up the environment
+
 ```bash
-# Create project folder
-mkdir news-summarizer-fact-check
-cd news-summarizer-fact-check
+git clone https://github.com/srk333/News-Summarizer-with-Fact-Check-Notes.git
+cd News-Summarizer-with-Fact-Check-Notes
 
-# Create virtual environment (Windows)
+# Windows (PowerShell)
 python -m venv venv
-venv\Scripts\activate
+.\venv\Scripts\Activate.ps1
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Database Setup (PostgreSQL)
-Ensure you have PostgreSQL installed.
-1. Create a database named `newslens` in pgAdmin or via psql:
-   ```sql
-   CREATE DATABASE newslens;
-   ```
-2. Update the `DATABASE_URL` in your `.env` file to match your credentials. If no `DATABASE_URL` is provided, the application will fallback to a local SQLite database (`newslens.db`) for testing purposes.
+### 2. Environment variables
 
-### 3. Environment Variables
-Copy `.env.example` to `.env` and fill in your keys:
+Copy `.env.example` to `.env` and fill in your own keys. **Never commit `.env`.**
+
 ```env
-OPENAI_API_KEY=your_actual_openai_key
-TAVILY_API_KEY=your_actual_tavily_key
-DATABASE_URL=postgresql://postgres:password@localhost:5432/newslens
-OPENAI_MODEL_NAME=gpt-4o-mini
+OPENAI_API_KEY=your_google_ai_studio_key
+OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+OPENAI_MODEL_NAME=gemini-3.5-flash-lite
+FALLBACK_MODEL_NAME=gemini-3.8-flash
+EMBEDDING_MODEL_NAME=gemini-embedding-001
+TAVILY_API_KEY=your_tavily_key
+DATABASE_URL=sqlite:///newslens.db
+MAX_CLAIMS=5
 ```
 
-### 4. Running the Application
+Notes:
 
-**Run the Backend Server:**
+- The variable is named `OPENAI_API_KEY` because Gemini is called through its OpenAI-compatible endpoint. It holds a **Google AI Studio key** (free at aistudio.google.com).
+- Gemini model names change often. If you get a "model not found" error, pick a current model from the AI Studio model list.
+- For PostgreSQL, use `DATABASE_URL=postgresql://user:password@localhost:5432/newslens`.
+- Keep the SQLite file outside cloud-synced folders such as OneDrive, which can lock it ("database is locked").
+
+### 3. Run the application
+
+**Backend** (from the project root):
+
 ```bash
-python backend/app.py
+python run.py
 ```
-The server will start on `http://localhost:5000`. The database tables will be created automatically on the first run.
 
-**Run the Frontend:**
-Since the frontend uses basic HTML/JS, you can simply open `frontend/index.html` in your web browser. 
-Alternatively, use a simple HTTP server:
+The server starts at `http://localhost:5000`, and the database tables are created on the first run.
+
+**Frontend** (second terminal):
+
 ```bash
 cd frontend
 python -m http.server 8000
 ```
-Then visit `http://localhost:8000` in your browser.
 
-### 5. Running Tests
-To run the automated unit tests:
+Open `http://localhost:8000` in your browser.
+
+### 4. Run the tests
+
 ```bash
 python -m unittest discover -s tests
 ```
@@ -93,46 +121,61 @@ python -m unittest discover -s tests
 ## API Documentation
 
 ### `POST /api/analyze`
+
 Analyzes a news article.
-- **Request Body**: `{"url": "https://..."}` OR `{"text": "News content..."}`
-- **Response**: Complete analysis JSON including summary, claims, evidence, and verdicts.
+
+- **Request body**: `{"url": "https://..."}` or `{"text": "News content..."}`
+- **Response**: JSON with summary, key points, claims, evidence, sources and verdicts.
 
 ### `GET /api/history`
+
 Returns a list of previously analyzed articles.
 
 ### `GET /api/history/<id>`
-Returns details of a specific past analysis.
+
+Returns the details of one past analysis.
 
 ---
 
-## How it Works
+## How It Works
 
-### How RAG Works
-Retrieval-Augmented Generation (RAG) grounds the LLM's responses in factual data. 
-1. **Retrieval**: We fetch live articles via Tavily.
-2. **Augmentation**: We split the long documents into smaller text chunks, convert them to vectors (Embeddings), and store them in ChromaDB. We then perform a similarity search to find the top 4 chunks most relevant to the extracted claim.
-3. **Generation**: The LLM reads only these retrieved chunks and decides if the claim is supported.
+### How RAG works
 
-### How Fact Checking Works
-1. The article is parsed by OpenAI to extract `FACTUAL CLAIMS` (excluding opinions).
-2. Each claim generates a web search query.
-3. Relevant search results are fetched and processed via RAG.
-4. The LLM is prompted strictly to evaluate the claim *only* against the provided evidence chunks.
-5. The result is classified into statuses like `SUPPORTED` or `CONTRADICTED`.
+Retrieval-Augmented Generation grounds the LLM in real evidence instead of its memory.
+
+1. **Retrieval**: Tavily fetches live web pages related to a claim.
+2. **Augmentation**: The pages are split into chunks, converted into embeddings, and stored in a FAISS index. A similarity search finds the chunks closest in meaning to the claim.
+3. **Generation**: The LLM reads only those chunks and decides whether the claim is supported.
+
+### How fact checking works
+
+1. The LLM extracts verifiable factual claims from the article (opinions are ignored).
+2. Each claim is used as a web search query.
+3. The search results go through the RAG pipeline above.
+4. The LLM is instructed to judge the claim only against the provided evidence and never use its own knowledge.
+5. The result is one of `SUPPORTED`, `PARTIALLY SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT EVIDENCE` or `UNABLE TO VERIFY`, with a short note.
+
+### Why RAG and not fine-tuning
+
+News changes daily, so a fine-tuned model would be out of date quickly, and it can't show its sources. RAG uses fresh evidence at question time and makes every verdict traceable.
 
 ---
 
 ## Limitations
-- **Search Scope**: Search results can be incomplete or miss paywalled information.
-- **Scraping Issues**: Some websites block automated extraction.
-- **AI Hallucination**: AI can occasionally misinterpret evidence.
-- **Evidence Quality**: The system assigns trust based on domain names, but a reliable domain can still publish errors.
-- **Lack of Evidence != False**: If no evidence is found, the claim is marked "Insufficient Evidence", not false.
-- **Not a Replacement**: The system is an assistant, not a replacement for human fact-checking.
+
+- **Search scope**: Search results can be incomplete or miss paywalled information.
+- **Scraping issues**: Some websites block automated extraction. Use the Paste Text option for these.
+- **AI errors**: The model can misinterpret evidence.
+- **Evidence quality**: Trust levels are based on domain names, and a reliable domain can still publish errors.
+- **No evidence is not "false"**: If no evidence is found, the claim is marked "Insufficient Evidence", not false.
+- **Free-tier limits**: The Gemini free tier has rate limits and can be temporarily busy, so analyses may be slow.
+- **Not a replacement**: The system assists human judgment and does not replace professional fact-checkers.
 
 ## Future Enhancements
+
 - Multilingual news support
 - Browser extension for real-time fact-checking
 - Image/video misinformation detection
 - More advanced citation verification
 - User authentication and personalized history
+- Fine-tuning a smaller model on labeled claim-evidence-verdict data
