@@ -5,24 +5,34 @@ import json
 import re
 
 
-def _make_llm():
+def _build(model_name):
     kwargs = dict(
         api_key=Config.OPENAI_API_KEY,
-        model=Config.OPENAI_MODEL_NAME,
+        model=model_name,
         temperature=0,
+        max_retries=4,      # retries 429/503 with backoff
+        timeout=60,
     )
     if Config.OPENAI_BASE_URL:
         kwargs["base_url"] = Config.OPENAI_BASE_URL
     return ChatOpenAI(**kwargs)
 
 
+def _make_llm():
+    """Primary model, with an automatic fallback model if it fails (503, 404, quota...)."""
+    import os
+    primary = _build(Config.OPENAI_MODEL_NAME)
+    fallback_name = os.getenv("FALLBACK_MODEL_NAME", "").strip()
+    if fallback_name and fallback_name != Config.OPENAI_MODEL_NAME:
+        return primary.with_fallbacks([_build(fallback_name)])
+    return primary
+
+
 def _parse_json(content):
     """Robustly parse JSON from LLM response, stripping markdown fences."""
     content = content.strip()
-    # Strip ```json ... ``` or ``` ... ```
     if content.startswith("```"):
         parts = content.split("```")
-        # parts[1] is the content between first pair of ```
         inner = parts[1]
         if inner.startswith("json"):
             inner = inner[4:]

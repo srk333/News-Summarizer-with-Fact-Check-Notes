@@ -47,4 +47,5 @@ RULES:
             parsed = _parse_json(content)
             return parsed.get("claims", [])
         except Exception as e:
+            print(f"[claim_extractor] failed: {e}")
             return []
