@@ -12,10 +12,12 @@ DB_DIR = Path.home() / ".newslens"
 def _db_url():
     url = os.getenv("DATABASE_URL", "").strip()
 
-    # Hosted Postgres (Render/Neon): use as given, fixing the old URL prefix
+        # Hosted Postgres (Render/Neon): force the psycopg2 driver we installed
     if url and not url.startswith("sqlite"):
         if url.startswith("postgres://"):
-            url = url.replace("postgres://", "postgresql://", 1)
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
         return url
 
     prefix = "sqlite:///"
