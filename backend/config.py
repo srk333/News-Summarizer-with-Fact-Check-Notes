@@ -45,3 +45,5 @@ class Config:
 
     # Tavily search
     TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+    
+    SECRET_KEY = os.getenv("SECRET_KEY") or "dev-only-secret-change-me"

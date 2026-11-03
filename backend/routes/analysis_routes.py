@@ -12,13 +12,15 @@ from backend.database.db import db
 from backend.utils.validators import is_valid_url
 import json
 import traceback
-
+from backend.routes.auth_routes import get_current_user
 analysis_bp = Blueprint('analysis', __name__)
 
 @analysis_bp.route('/api/analyze', methods=['POST'])
 def analyze():
+    current_user = get_current_user()
     data = request.json
     if not data:
+        current_user = get_current_user()
         return jsonify({"error": "No data provided."}), 400
 
     url = data.get('url', '').strip()
@@ -55,6 +57,7 @@ def analyze():
 
         # STEP 3: Save article to DB
         article = Article(
+            user_id=current_user.id if current_user else None,
             url=url if url else None,
             title=article_data.get('title', 'Untitled Article'),
             source=article_data.get('source', 'Unknown'),

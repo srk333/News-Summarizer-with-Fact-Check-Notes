@@ -16,6 +16,8 @@ class Article(db.Model):
     result_json = db.Column(db.Text)      # optional raw result
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+
     # Relationship to claims
     claims = db.relationship('Claim', backref='article', lazy=True, cascade="all, delete-orphan")
 

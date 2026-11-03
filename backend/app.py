@@ -5,6 +5,8 @@ from backend.config import Config
 from backend.database.db import db
 from backend.routes.analysis_routes import analysis_bp
 from backend.routes.history_routes import history_bp
+from backend.models.user import User  # noqa: F401  (must load before create_all)
+from backend.routes.auth_routes import auth_bp
 
 def create_app():
     app = Flask(__name__)
@@ -15,6 +17,7 @@ def create_app():
     
     app.register_blueprint(analysis_bp)
     app.register_blueprint(history_bp)
+    app.register_blueprint(auth_bp)
     
     @app.route('/api/health', methods=['GET'])
     def health():
