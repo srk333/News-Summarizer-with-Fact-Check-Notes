@@ -10,3 +10,7 @@ python-dotenv==1.0.1
 faiss-cpu>=1.8.0
 numpy>=1.26
 tavily-python>=0.3.3
+gunicorn==22.0.0
+psycopg2-binary
+newspaper3k
+lxml_html_clean
